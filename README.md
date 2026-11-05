@@ -6,7 +6,7 @@ The big chess sites charge for full game review, but the engine underneath, Stoc
 
 ## Use it
 
-- **Live site:** open the GitHub Pages link for this repo.
+- **Live site:** https://mistydrink.github.io/open-review/
 - **On your computer:** browsers block the engine when `index.html` is opened directly as a file, so start a small local server in this folder and open the address it prints:
 
   ```
