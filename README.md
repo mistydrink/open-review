@@ -4,20 +4,15 @@ Free chess game review in your browser. Paste a PGN and Stockfish 17 grades ever
 
 The big chess sites charge for full game review, but the engine underneath, Stockfish, is free and open source. Open Review runs that same engine on your own computer, so the review costs nothing and your games never leave the page.
 
-## Use it
+**Live site:** https://mistydrink.github.io/open-review/
 
-- **Live site:** https://mistydrink.github.io/open-review/
-- **On your computer:** browsers block the engine when `index.html` is opened directly as a file, so start a small local server in this folder and open the address it prints:
+## Run locally
 
-  ```
-  python -m http.server 8000
-  ```
+The engine runs in a Web Worker, which browsers block on `file://` pages, so serve the folder:
 
-  then go to `http://localhost:8000`.
-
-1. Paste a PGN (on Chess.com or Lichess, open a finished game, choose Share, and copy the PGN), open a `.pgn` file, or load one of the two sample games.
-2. Pick a depth: Fast, Standard or Deep. Standard reviews a typical 40-move game in under 15 seconds on a laptop.
-3. Select **Review game**, then step through with the arrow buttons, your keyboard's arrow keys, the scoresheet, or by clicking the graph.
+```
+python -m http.server 8000
+```
 
 ## How moves are graded
 
