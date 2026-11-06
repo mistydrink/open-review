@@ -9,6 +9,7 @@ export const GRADES = [
   { id: "best",       label: "Best",       symbol: "★",  color: "#7fae3d" },
   { id: "excellent",  label: "Excellent",  symbol: "✓",  color: "#93b84a" },
   { id: "good",       label: "Good",       symbol: "✓",  color: "#8aa07b" },
+  { id: "book",       label: "Book",       symbol: "≡",  color: "#a88865" },
   { id: "inaccuracy", label: "Inaccuracy", symbol: "?!", color: "#e2b100" },
   { id: "mistake",    label: "Mistake",    symbol: "?",  color: "#ef8a2c" },
   { id: "miss",       label: "Miss",       symbol: "✕",  color: "#e86a5c" },
@@ -82,7 +83,40 @@ function mateFromScore(score) {
   return score > 0 ? 10000 - score : -(10000 + score);
 }
 
-export function classifyGame(moves, fens, evals) {
+// Position key used by the openings book: board, side to move, castling, en passant.
+export const epd = (fen) => fen.split(" ").slice(0, 4).join(" ");
+
+// The engine's line, converted from UCI to readable moves.
+export function lineToSan(fen, uciMoves, max = 6) {
+  if (!uciMoves || !uciMoves.length) return [];
+  const g = new Chess(fen);
+  const out = [];
+  for (const u of uciMoves.slice(0, max)) {
+    const m = g.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] || "q" });
+    if (!m) break;
+    out.push(m.san);
+  }
+  return out;
+}
+
+// Opening while the game is young or still in the book, endgame once
+// most pieces are off, middlegame in between.
+export function phaseOf(fen, ply, inBook) {
+  const board = fen.split(" ")[0];
+  let material = 0;
+  let queens = 0;
+  for (const ch of board) {
+    const c = ch.toLowerCase();
+    if (c === "q") { material += 9; queens++; }
+    else if (c === "r") material += 5;
+    else if (c === "b" || c === "n") material += 3;
+  }
+  if (material <= 18 || (queens === 0 && material <= 26)) return "endgame";
+  if (inBook || ply <= 20) return "opening";
+  return "middlegame";
+}
+
+export function classifyGame(moves, fens, evals, openings = null) {
   // Raw engine score of every position, from the side to move.
   const raw = fens.map((fen, k) => positionScore(fen, evals[k]));
 
@@ -99,9 +133,21 @@ export function classifyGame(moves, fens, evals) {
     refined[j] = uci(moves[j]) === evals[j].best ? viaGame : Math.max(raw[j], viaGame);
   }
 
+  // The database names only some positions along a line, so every move up to
+  // the last named position (within the first 40 moves) counts as book.
+  let lastBook = -1;
+  let opening = null;
+  if (openings) {
+    for (let i = 0; i < Math.min(moves.length, 80); i++) {
+      const hit = openings[epd(fens[i + 1])];
+      if (hit) { lastBook = i; opening = { eco: hit[0], name: hit[1] }; }
+    }
+  }
+
   const plies = [];
   for (let i = 0; i < moves.length; i++) {
     const mv = moves[i];
+    const known = i <= lastBook;
     const before = evals[i];
     const scoreBefore = refined[i];
     const scoreAfter = -refined[i + 1]; // flip to the mover's side
@@ -142,6 +188,9 @@ export function classifyGame(moves, fens, evals) {
     else if (drop < 20) grade = "mistake";
     else grade = "blunder";
 
+    // Book: a known opening move that the engine has no objection to.
+    if (known && grade !== "brilliant" && drop < 5) grade = "book";
+
     // A "miss": the opponent just gave something away and this move let it slip.
     const prev = plies[i - 1];
     if (
@@ -166,6 +215,10 @@ export function classifyGame(moves, fens, evals) {
       accuracy: moveAccuracy(drop),
       bestUci: before.best,
       bestSan: isBest ? null : sanFromUci(fens[i], before.best),
+      bestLine: lineToSan(fens[i], before.pv),
+      bestScore: raw[i], // engine's best, from the mover's side, for practice mode
+      phase: phaseOf(fens[i], i + 1, !!known),
+      inBook: known,
       // White-perspective evaluation after the move, for the bar and graph.
       whiteScore: mv.color === "w" ? scoreAfter : -scoreAfter,
       mateIn: mateFromScore(refined[i + 1]),
@@ -177,9 +230,22 @@ export function classifyGame(moves, fens, evals) {
   for (const g of GRADES) { summary.w[g.id] = 0; summary.b[g.id] = 0; }
   for (const p of plies) summary[p.color][p.grade]++;
 
+  // Errors (inaccuracies and worse) and moves by game phase, per player.
+  const phases = {};
+  for (const c of ["w", "b"]) {
+    phases[c] = { opening: { moves: 0, errors: 0 }, middlegame: { moves: 0, errors: 0 }, endgame: { moves: 0, errors: 0 } };
+  }
+  for (const p of plies) {
+    const slot = phases[p.color][p.phase];
+    slot.moves++;
+    if (["inaccuracy", "mistake", "miss", "blunder"].includes(p.grade)) slot.errors++;
+  }
+
   return {
     plies,
     summary,
+    phases,
+    opening,
     accuracy: {
       w: gameAccuracy(plies.filter((p) => p.color === "w").map((p) => p.accuracy)),
       b: gameAccuracy(plies.filter((p) => p.color === "b").map((p) => p.accuracy)),

@@ -44,7 +44,9 @@ export function getReview(id) {
 }
 
 // evals: engine results per position; packed into arrays to save space.
-export function saveReview({ pgn, headers, depth, plies, accuracy, evals }) {
+export function saveReview({ pgn, headers, depth, review, evals, you = null }) {
+  const plies = review.plies.length;
+  const accuracy = review.accuracy;
   const key = hash(pgn.replace(/\s+/g, " ").trim()) + "-" + depth;
   const entry = {
     id: key + "-" + Date.now().toString(36),
@@ -58,7 +60,11 @@ export function saveReview({ pgn, headers, depth, plies, accuracy, evals }) {
     accW: accuracy.w,
     accB: accuracy.b,
     pgn,
-    evals: evals.map((e) => [e.best, e.score, e.mateIn, e.second, e.over ? 1 : 0]),
+    evals: evals.map((e) => [e.best, e.score, e.mateIn, e.second, e.over ? 1 : 0, (e.pv || []).slice(0, 6).join(" ")]),
+    // summary used by Insights, so it doesn't have to re-grade every game
+    stats: statsOf(review),
+    you, // set when the game was imported by username: { name, color }
+    gameDate: headers.Date && !headers.Date.includes("?") ? headers.Date.replace(/\./g, "-") : null,
   };
   const list = read().filter((r) => r.key !== key); // re-reviewing replaces the old copy
   list.unshift(entry);
@@ -66,10 +72,24 @@ export function saveReview({ pgn, headers, depth, plies, accuracy, evals }) {
   return entry;
 }
 
+export function statsOf(review) {
+  return {
+    opening: review.opening ? review.opening.name : null,
+    counts: review.summary,
+    phases: review.phases,
+  };
+}
+
 export function unpackEvals(packed) {
-  return packed.map(([best, score, mateIn, second, over]) => ({
-    best, score, mateIn, second, over: !!over,
+  return packed.map(([best, score, mateIn, second, over, pv]) => ({
+    best, score, mateIn, second, over: !!over, pv: pv ? pv.split(" ") : [],
   }));
+}
+
+export function updateStats(id, stats) {
+  const list = read();
+  const r = list.find((x) => x.id === id);
+  if (r) { r.stats = stats; write(list); }
 }
 
 export function deleteReview(id) {

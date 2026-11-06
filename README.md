@@ -16,10 +16,18 @@ python -m http.server 8000
 
 ## Features
 
-- Dark and light themes, remembered with a small first-party cookie (`or_theme`). The analysis depth you pick is remembered the same way (`or_depth`).
-- Past reviews are saved in this browser's local storage (cookies are too small to hold a game), with the engine results included, so they reopen instantly without re-running Stockfish. Up to 50 are kept; delete them one at a time or clear them all.
-- The layout sizes the board to the window, so a full review fits on one screen on a laptop.
-- Two fixed ad slots beside the board on wide screens. No pop-ups, overlays or autoplay. They show a placeholder until an ad network is set up in `js/ads.js` (see the comments there). Ad networks set their own cookies, so check their consent rules for your region before switching ads on.
+- **Import by username** from Chess.com or Lichess using their free public APIs, then pick one of your last 20 games. The board turns to your side, and practice and insights follow your moves.
+- **Explore any position.** Click a piece and a square to try your own moves, with Stockfish showing a live evaluation and its best line. "Back to game" returns to the review.
+- **Practice your mistakes.** Every mistake, miss and blunder becomes a puzzle from the position before it. Stockfish checks your answer.
+- **Engine lines.** The coach line shows the engine's whole plan, not just one move.
+- **Openings and book moves** from the Lichess openings database (CC0).
+- **Insights** across saved reviews: record, average accuracy, blunders per game, accuracy by game, errors per 10 moves by phase, and results by opening.
+- **Share links** that carry the whole review in the URL, so they open instantly with no server. **Download** the game as PGN with grades and evaluations as comments.
+- **Works offline** and can be installed as an app. A service worker caches the site, the engine and the openings book.
+- Dark and light themes, remembered with a small first-party cookie (`or_theme`). The analysis depth and last usernames are remembered the same way.
+- Past reviews are saved in this browser's local storage (cookies are too small to hold a game) and reopen without re-running Stockfish. Up to 50 are kept.
+- The layout sizes the board to the window, so a review fits on one laptop screen.
+- Two fixed ad slots beside the board on wide screens. No pop-ups, overlays or autoplay. They show a placeholder until an ad network is set up in `js/ads.js`. Ad networks set their own cookies, so check their consent rules for your region before switching ads on.
 
 ## How moves are graded
 
@@ -56,6 +64,11 @@ js/sample.js        sample games
 js/history.js       saved reviews (local storage)
 js/prefs.js         theme and depth cookies
 js/ads.js           side ad slots
+js/importers.js     Chess.com and Lichess game import
+js/share.js         share links and annotated PGN export
+js/insights.js      stats across saved reviews
+sw.js               offline cache
+data/openings.json  openings book built from lichess-org/chess-openings
 engine/             Stockfish 17.1 lite, single-threaded WebAssembly build
 vendor/             chess.js, Cburnett pieces, Archivo font
 ```
@@ -65,4 +78,5 @@ vendor/             chess.js, Cburnett pieces, Archivo font
 - [Stockfish](https://stockfishchess.org) via [stockfish.js](https://github.com/nmrugg/stockfish.js), GPLv3. This project is released under GPLv3 too (see `LICENSE`).
 - [chess.js](https://github.com/jhlywa/chess.js) by Jeff Hlywa, BSD 2-Clause (`vendor/chess.js.LICENSE`).
 - Chess pieces by Cburnett, CC BY-SA 3.0, via [cm-chessboard](https://github.com/shaack/cm-chessboard).
+- Opening names from [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings), CC0 (`data/openings.LICENSE`).
 - [Archivo](https://fonts.google.com/specimen/Archivo) by Omnibus-Type, SIL Open Font License (`vendor/fonts/OFL.txt`).

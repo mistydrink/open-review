@@ -43,9 +43,21 @@ export class Board {
     return { x: file * S, y: (7 - rank) * S };
   }
 
-  draw(fen, ply) {
+  // Square under a click, accounting for board orientation.
+  squareAt(evt) {
+    const r = this.svg.getBoundingClientRect();
+    let file = Math.floor(((evt.clientX - r.left) / r.width) * 8);
+    let row = Math.floor(((evt.clientY - r.top) / r.height) * 8);
+    if (file < 0 || file > 7 || row < 0 || row > 7) return null;
+    if (this.flipped) { file = 7 - file; row = 7 - row; }
+    return FILES[file] + (8 - row);
+  }
+
+  // opts: { highlight: {from, to, color}, arrow: uci, selected: square, targets: [squares] }
+  draw(fen, ply, opts = {}) {
     const svg = this.svg;
     svg.replaceChildren();
+    svg.classList.toggle("interactive", !!opts.interactive);
 
     // arrow head definition
     const defs = el("defs", {}, svg);
@@ -82,6 +94,18 @@ export class Board {
       }
     }
 
+    // explore / practice move highlight
+    if (opts.highlight) {
+      for (const sq of [opts.highlight.from, opts.highlight.to]) {
+        const { x, y } = this.xy(sq);
+        el("rect", { x, y, width: S, height: S, fill: opts.highlight.color || "#d6b44a", "fill-opacity": "0.45" }, svg);
+      }
+    }
+    if (opts.selected) {
+      const { x, y } = this.xy(opts.selected);
+      el("rect", { x, y, width: S, height: S, fill: "#2f6fd1", "fill-opacity": "0.35" }, svg);
+    }
+
     // pieces
     const rows = fen.split(" ")[0].split("/");
     rows.forEach((row, ri) => {
@@ -96,10 +120,17 @@ export class Board {
       }
     });
 
-    // engine's preferred move, when the played move was not it
-    if (ply && ply.bestUci && ply.bestSan) {
-      const a = this.xy(ply.bestUci.slice(0, 2));
-      const b = this.xy(ply.bestUci.slice(2, 4));
+    // legal destinations of the selected piece
+    for (const sq of opts.targets || []) {
+      const { x, y } = this.xy(sq);
+      el("circle", { cx: x + S / 2, cy: y + S / 2, r: 5, fill: "#1c2433", "fill-opacity": "0.28" }, svg);
+    }
+
+    // engine's preferred move: when the played move was not it, or the live line in explore mode
+    const arrowUci = opts.arrow !== undefined ? opts.arrow : (ply && ply.bestUci && ply.bestSan ? ply.bestUci : null);
+    if (arrowUci) {
+      const a = this.xy(arrowUci.slice(0, 2));
+      const b = this.xy(arrowUci.slice(2, 4));
       const cx = S / 2;
       const dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.hypot(dx, dy);
