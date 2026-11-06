@@ -6,14 +6,6 @@ The big chess sites charge for full game review, but the engine underneath, Stoc
 
 **Live site:** https://mistydrink.github.io/open-review/
 
-## Run locally
-
-The engine runs in a Web Worker, which browsers block on `file://` pages, so serve the folder:
-
-```
-python -m http.server 8000
-```
-
 ## Features
 
 - **Import by username** from Chess.com or Lichess using their free public APIs, then pick one of your last 20 games. The board turns to your side, and practice and insights follow your moves.
