@@ -14,6 +14,13 @@ The engine runs in a Web Worker, which browsers block on `file://` pages, so ser
 python -m http.server 8000
 ```
 
+## Features
+
+- Dark and light themes, remembered with a small first-party cookie (`or_theme`). The analysis depth you pick is remembered the same way (`or_depth`).
+- Past reviews are saved in this browser's local storage (cookies are too small to hold a game), with the engine results included, so they reopen instantly without re-running Stockfish. Up to 50 are kept; delete them one at a time or clear them all.
+- The layout sizes the board to the window, so a full review fits on one screen on a laptop.
+- Two fixed ad slots beside the board on wide screens. No pop-ups, overlays or autoplay. They show a placeholder until an ad network is set up in `js/ads.js` (see the comments there). Ad networks set their own cookies, so check their consent rules for your region before switching ads on.
+
 ## How moves are graded
 
 Each position is analysed by Stockfish (two best lines per position). Scores are turned into a win chance for the player to move, using the curve Lichess publishes for its accuracy metric, and each move is graded by how much win chance it gave away compared with the engine's best move.
@@ -46,6 +53,9 @@ js/engine.js        Stockfish Web Worker wrapper (UCI)
 js/review.js        grading and accuracy
 js/board.js         SVG board, best-move arrow, grade badge
 js/sample.js        sample games
+js/history.js       saved reviews (local storage)
+js/prefs.js         theme and depth cookies
+js/ads.js           side ad slots
 engine/             Stockfish 17.1 lite, single-threaded WebAssembly build
 vendor/             chess.js, Cburnett pieces, Archivo font
 ```

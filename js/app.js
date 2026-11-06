@@ -3,6 +3,9 @@ import { Engine } from "./engine.js";
 import { Board, loadPieces } from "./board.js";
 import { GRADES, GRADE, classifyGame, winChance } from "./review.js";
 import { SAMPLES } from "./sample.js";
+import { listReviews, getReview, saveReview, unpackEvals, deleteReview, clearReviews } from "./history.js";
+import { applyTheme, currentTheme, toggleTheme, getCookie, setCookie } from "./prefs.js";
+import { watchAds } from "./ads.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,17 +65,17 @@ function show(index) {
     badge.setAttribute("aria-label", g.label);
     $("coachMain").textContent = moveLabel(ply) + " " + PHRASE[ply.grade];
     $("coachSub").textContent = ply.bestSan
-      ? "The engine preferred " + ply.bestSan + "."
+      ? "Engine preferred " + ply.bestSan + "."
       : ply.grade === "brilliant"
-        ? "A sacrifice that still holds the advantage."
+        ? "A sacrifice that keeps the edge."
         : ply.grade === "great"
-          ? "The only move that keeps the position together."
-          : "Matches the engine's choice.";
+          ? "The only move that holds."
+          : "Matches the engine.";
     $("coachEval").textContent = formatEval(ply.whiteScore, ply.mateIn, ply.moverToMoveAfter);
   } else if (review) {
     badge.hidden = true;
     $("coachMain").textContent = "Starting position";
-    $("coachSub").textContent = "Use the arrows or your keyboard to step through the game.";
+    $("coachSub").textContent = "Step through with the arrows or your keyboard.";
     $("coachEval").textContent = formatEval(review.startScore, null, "w");
   }
 
@@ -123,8 +126,12 @@ function drawGraph() {
     }
   });
 
+  const css = getComputedStyle(document.documentElement);
+  const light = css.getPropertyValue("--bar-light").trim() || "#f4f4f1";
+  const dark = css.getPropertyValue("--bar-dark").trim() || "#1c2433";
+  marks = marks.replaceAll('stroke="#1c2433"', `stroke="${dark}"`);
   svg.innerHTML =
-    `<path d="${d}" fill="#f4f4f1"/>` +
+    `<path d="${d}" fill="${light}"/>` +
     `<line x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}" stroke="#8a91a0" stroke-width="1" vector-effect="non-scaling-stroke" opacity="0.6"/>` +
     `<line x1="${x(current)}" y1="0" x2="${x(current)}" y2="${H}" stroke="#2f6fd1" stroke-width="2" vector-effect="non-scaling-stroke"/>` +
     marks;
@@ -204,23 +211,12 @@ async function runReview() {
     showError("Paste a game first, or try the sample game.");
     return;
   }
-  const game = new Chess();
-  if (!game.load_pgn(text, { sloppy: true })) {
-    showError("That PGN couldn't be read. Check that it includes the moves, like 1. e4 e5 2. Nf3.");
+  const parsed = parseGame(text);
+  if (parsed.error) {
+    showError(parsed.error);
     return;
   }
-  const moves = game.history({ verbose: true });
-  if (!moves.length) {
-    showError("That game has no moves to review.");
-    return;
-  }
-  const headers = game.header();
-
-  // rebuild the list of positions from the game's own starting position
-  const replay = new Chess();
-  if (headers.FEN) replay.load(headers.FEN);
-  const fens = [replay.fen()];
-  for (const m of moves) { replay.move(m.san, { sloppy: true }); fens.push(replay.fen()); }
+  const { moves, fens, headers } = parsed;
 
   const depth = Number(document.querySelector('input[name="depth"]:checked').value);
   $("btnReview").disabled = true;
@@ -257,13 +253,87 @@ async function runReview() {
       `Reviewing position ${done} of ${fens.length}` + (done > 3 && left > 0 ? `, about ${left}s left` : "");
   }
 
-  startFen = fens[0];
-  review = classifyGame(moves, fens, evals);
-  renderResults(headers);
   setEngineState("Stockfish 17 ready", "ready");
   $("btnReview").disabled = false;
   $("progress").hidden = true;
+  presentReview({ moves, fens, headers, evals });
+  saveReview({ pgn: text, headers, depth, plies: moves.length, accuracy: review.accuracy, evals });
+  renderHistory();
+}
+
+// Read a PGN into its moves and every position along the way.
+function parseGame(text) {
+  const game = new Chess();
+  if (!game.load_pgn(text, { sloppy: true })) {
+    return { error: "That PGN couldn't be read. Check that it includes the moves, like 1. e4 e5 2. Nf3." };
+  }
+  const moves = game.history({ verbose: true });
+  if (!moves.length) return { error: "That game has no moves to review." };
+  const headers = game.header();
+  const replay = new Chess();
+  if (headers.FEN) replay.load(headers.FEN);
+  const fens = [replay.fen()];
+  for (const m of moves) { replay.move(m.san, { sloppy: true }); fens.push(replay.fen()); }
+  return { moves, fens, headers };
+}
+
+function presentReview({ moves, fens, headers, evals }) {
+  startFen = fens[0];
+  review = classifyGame(moves, fens, evals);
+  renderResults(headers);
   show(0);
+}
+
+/* ---------------- past reviews ---------------- */
+
+const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+function renderHistory() {
+  const list = listReviews();
+  const ol = $("historyList");
+  ol.innerHTML = "";
+  $("historyEmpty").hidden = list.length > 0;
+  $("btnClearHistory").hidden = list.length === 0;
+  for (const r of list) {
+    const li = document.createElement("li");
+    li.className = "history-item";
+
+    const open = document.createElement("button");
+    open.className = "history-open";
+    open.type = "button";
+    const moves = Math.ceil(r.plies / 2);
+    const meta = [r.result, moves + (moves === 1 ? " move" : " moves"), dateFmt.format(new Date(r.savedAt))]
+      .filter(Boolean).join(", ");
+    const acc = r.accW == null || r.accB == null ? "" : `${r.accW.toFixed(1)} / ${r.accB.toFixed(1)}`;
+    open.innerHTML =
+      `<span class="history-players"></span><span class="history-meta"></span><span class="history-acc"></span>`;
+    open.querySelector(".history-players").textContent = `${r.white} vs ${r.black}`;
+    open.querySelector(".history-players").title = `${r.white} vs ${r.black}`;
+    open.querySelector(".history-meta").textContent = meta;
+    open.querySelector(".history-acc").textContent = acc;
+    open.title = acc ? `Accuracy: ${r.white} ${r.accW.toFixed(1)}, ${r.black} ${r.accB.toFixed(1)}` : "";
+    open.addEventListener("click", () => openSaved(r.id));
+
+    const del = document.createElement("button");
+    del.className = "history-del";
+    del.type = "button";
+    del.textContent = "×";
+    del.setAttribute("aria-label", `Delete review of ${r.white} vs ${r.black}`);
+    del.addEventListener("click", () => { deleteReview(r.id); renderHistory(); });
+
+    li.append(open, del);
+    ol.appendChild(li);
+  }
+}
+
+function openSaved(id) {
+  const r = getReview(id);
+  if (!r) { renderHistory(); return; }
+  const parsed = parseGame(r.pgn);
+  if (parsed.error) { showError("That saved review couldn't be opened."); return; }
+  showError("");
+  $("pgn").value = r.pgn;
+  presentReview({ ...parsed, evals: unpackEvals(r.evals) });
 }
 
 /* ---------------- wiring ---------------- */
@@ -280,7 +350,7 @@ $("pgnFile").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (file) $("pgn").value = await file.text();
 });
-$("btnNew").addEventListener("click", () => {
+function goHome() {
   review = null;
   current = 0;
   startFen = new Chess().fen();
@@ -294,8 +364,37 @@ $("btnNew").addEventListener("click", () => {
   $("evalWhite").style.height = "50%";
   $("evalNum").textContent = "0.0";
   board.draw(startFen, null);
-  $("pgn").focus();
+  renderHistory();
+}
+$("btnNew").addEventListener("click", goHome);
+// "Clear all" asks for a second click instead of opening a dialog.
+let clearTimer = null;
+$("btnClearHistory").addEventListener("click", (e) => {
+  const btn = e.currentTarget;
+  if (btn.dataset.armed) {
+    clearTimeout(clearTimer);
+    delete btn.dataset.armed;
+    btn.textContent = "Clear all";
+    clearReviews();
+    renderHistory();
+    return;
+  }
+  btn.dataset.armed = "1";
+  btn.textContent = "Click again to delete all";
+  clearTimer = setTimeout(() => { delete btn.dataset.armed; btn.textContent = "Clear all"; }, 3000);
 });
+$("btnTheme").addEventListener("click", () => { toggleTheme(); if (review) drawGraph(); });
+
+// remember the chosen depth in a cookie
+const savedDepth = getCookie("or_depth");
+if (savedDepth) {
+  const input = document.querySelector(`input[name="depth"][value="${savedDepth}"]`);
+  if (input) input.checked = true;
+}
+document.querySelectorAll('input[name="depth"]').forEach((input) =>
+  input.addEventListener("change", () => setCookie("or_depth", input.value))
+);
+
 $("btnStart").addEventListener("click", () => show(0));
 $("btnPrev").addEventListener("click", () => show(current - 1));
 $("btnNext").addEventListener("click", () => show(current + 1));
@@ -315,5 +414,8 @@ document.addEventListener("keydown", (e) => {
 
 window.addEventListener("resize", () => { if (review) drawGraph(); });
 
+applyTheme(currentTheme());
+renderHistory();
+watchAds();
 loadPieces().then(() => board.draw(startFen, null));
 $("btnStart").disabled = $("btnPrev").disabled = $("btnNext").disabled = $("btnEnd").disabled = true;

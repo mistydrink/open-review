@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Open Review: free chess game review</title>
   <meta name="description" content="Paste a PGN and get every move graded by Stockfish 17, free and in your browser.">
+  <script>
+    // Apply the saved theme before the page paints, so there is no flash.
+    (function () {
+      var m = document.cookie.match(/(?:^|; )or_theme=(light|dark)/);
+      var theme = m ? m[1] : (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <link rel="preload" href="vendor/fonts/archivo-variable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -14,99 +22,123 @@
       <span class="wordmark">Open Review</span>
       <span class="tagline">Free game review, powered by Stockfish 17</span>
     </div>
-    <div class="engine-state" id="engineState" aria-live="polite">Engine loads when you start a review</div>
+    <div class="top-right">
+      <span class="engine-state" id="engineState" aria-live="polite">Engine loads when you start a review</span>
+      <button class="theme-btn" id="btnTheme" type="button" aria-pressed="false">
+        <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg>
+        <span id="themeLabel">Dark mode</span>
+      </button>
+    </div>
   </header>
 
-  <main class="app">
-    <section class="stage" aria-label="Board">
-      <div class="coach" id="coach" aria-live="polite">
-        <span class="coach-badge" id="coachBadge" hidden></span>
-        <div class="coach-text">
-          <p class="coach-main" id="coachMain">Paste a game to start your review.</p>
-          <p class="coach-sub" id="coachSub">Every move gets graded from brilliant to blunder.</p>
-        </div>
-        <span class="coach-eval" id="coachEval"></span>
-      </div>
-
-      <div class="board-row">
-        <div class="evalbar" id="evalbar" aria-hidden="true">
-          <div class="evalbar-white" id="evalWhite"></div>
-          <span class="evalbar-num" id="evalNum">0.0</span>
-        </div>
-        <svg class="board" id="board" role="img" aria-label="Chess board"></svg>
-      </div>
-
-      <div class="controls">
-        <button class="ctl" id="btnStart" aria-label="First move">⏮</button>
-        <button class="ctl" id="btnPrev" aria-label="Previous move">◀</button>
-        <button class="ctl" id="btnNext" aria-label="Next move">▶</button>
-        <button class="ctl" id="btnEnd" aria-label="Last move">⏭</button>
-        <button class="ctl ctl-text" id="btnFlip">Flip board</button>
-      </div>
-
-      <figure class="graph-wrap" id="graphWrap" hidden>
-        <svg class="graph" id="graph" role="img" aria-label="Evaluation over the game"></svg>
-        <figcaption>Advantage over the game. Click to jump to a move.</figcaption>
-      </figure>
-    </section>
-
-    <aside class="panel">
-      <!-- Import -->
-      <section class="import" id="importView">
-        <h1>Review a game</h1>
-        <p class="lede">Paste the PGN from any site. Chess.com and Lichess both let you copy it from the share menu.</p>
-        <label class="field-label" for="pgn">Game PGN</label>
-        <textarea id="pgn" spellcheck="false" placeholder="1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 ..."></textarea>
-        <div class="import-row">
-          <label class="file-btn">
-            <input type="file" id="pgnFile" accept=".pgn,.txt">
-            Open a .pgn file
-          </label>
-        </div>
-        <p class="samples">No game handy? Load
-          <button class="link-btn" data-sample="0">Morphy's Opera Game</button> or
-          <button class="link-btn" data-sample="1">Kasparov vs Topalov</button>.
-        </p>
-        <fieldset class="depth">
-          <legend>Analysis depth</legend>
-          <label><input type="radio" name="depth" value="11"> Fast</label>
-          <label><input type="radio" name="depth" value="14" checked> Standard</label>
-          <label><input type="radio" name="depth" value="18"> Deep</label>
-        </fieldset>
-        <button class="primary" id="btnReview">Review game</button>
-        <p class="error" id="importError" role="alert" hidden></p>
-        <div class="progress" id="progress" hidden>
-          <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
-          <p class="progress-text" id="progressText">Starting the engine</p>
-        </div>
-      </section>
-
-      <!-- Results -->
-      <section class="results" id="resultsView" hidden>
-        <div class="players">
-          <span class="player-name"><span class="swatch swatch-w"></span><span id="nameW">White</span></span>
-          <span class="player-name"><span class="swatch swatch-b"></span><span id="nameB">Black</span></span>
-          <span class="acc" id="accW">0.0</span>
-          <span class="acc" id="accB">0.0</span>
-          <p class="acc-label">Accuracy</p>
-        </div>
-
-        <table class="grades" id="grades">
-          <thead><tr><th scope="col">Move grade</th><th scope="col" class="num">White</th><th scope="col" class="num">Black</th></tr></thead>
-          <tbody></tbody>
-        </table>
-
-        <div class="sheet-head">
-          <h2>Scoresheet</h2>
-          <button class="link-btn" id="btnNew">Review another game</button>
-        </div>
-        <div class="sheet" id="sheet" tabindex="0" aria-label="Moves"></div>
-      </section>
+  <div class="shell">
+    <aside class="ad-rail" aria-label="Advertisement">
+      <div class="ad-slot" id="adLeft"></div>
     </aside>
-  </main>
+
+    <main class="app">
+      <section class="stage" aria-label="Board">
+        <div class="coach" id="coach" aria-live="polite">
+          <span class="coach-badge" id="coachBadge" hidden></span>
+          <div class="coach-text">
+            <p class="coach-main" id="coachMain">Paste a game to start your review.</p>
+            <p class="coach-sub" id="coachSub">Every move gets graded from brilliant to blunder.</p>
+          </div>
+          <span class="coach-eval" id="coachEval"></span>
+        </div>
+
+        <div class="board-row">
+          <div class="evalbar" id="evalbar" aria-hidden="true">
+            <div class="evalbar-white" id="evalWhite"></div>
+            <span class="evalbar-num" id="evalNum">0.0</span>
+          </div>
+          <svg class="board" id="board" role="img" aria-label="Chess board"></svg>
+        </div>
+
+        <div class="controls">
+          <button class="ctl" id="btnStart" aria-label="First move">⏮</button>
+          <button class="ctl" id="btnPrev" aria-label="Previous move">◀</button>
+          <button class="ctl" id="btnNext" aria-label="Next move">▶</button>
+          <button class="ctl" id="btnEnd" aria-label="Last move">⏭</button>
+          <button class="ctl ctl-text" id="btnFlip">Flip board</button>
+        </div>
+
+        <div class="graph-wrap" id="graphWrap" hidden>
+          <svg class="graph" id="graph" role="img" aria-label="Advantage over the game. Click to jump to a move."><title>Click to jump to a move</title></svg>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <!-- Import + history -->
+        <section class="import" id="importView">
+          <h1>Review a game</h1>
+          <label class="field-label" for="pgn">Game PGN</label>
+          <textarea id="pgn" spellcheck="false" placeholder="Paste a PGN from Chess.com, Lichess or any site"></textarea>
+          <div class="import-row">
+            <label class="file-btn">
+              <input type="file" id="pgnFile" accept=".pgn,.txt">
+              Open a .pgn file
+            </label>
+            <span class="samples">Or try
+              <button class="link-btn" data-sample="0">the Opera Game</button> or
+              <button class="link-btn" data-sample="1">Kasparov 1999</button>
+            </span>
+          </div>
+          <fieldset class="depth">
+            <legend>Analysis depth</legend>
+            <label><input type="radio" name="depth" value="11"> Fast</label>
+            <label><input type="radio" name="depth" value="14" checked> Standard</label>
+            <label><input type="radio" name="depth" value="18"> Deep</label>
+          </fieldset>
+          <button class="primary" id="btnReview">Review game</button>
+          <p class="error" id="importError" role="alert" hidden></p>
+          <div class="progress" id="progress" hidden>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+            <p class="progress-text" id="progressText">Starting the engine</p>
+          </div>
+
+          <section class="history" aria-labelledby="historyTitle">
+            <div class="history-head">
+              <h2 id="historyTitle">Past reviews</h2>
+              <button class="link-btn" id="btnClearHistory" hidden>Clear all</button>
+            </div>
+            <p class="history-empty" id="historyEmpty">Games you review are saved here on this device, so you can reopen them instantly.</p>
+            <ol class="history-list" id="historyList"></ol>
+          </section>
+        </section>
+
+        <!-- Results -->
+        <section class="results" id="resultsView" hidden>
+          <div class="players">
+            <span class="player-name"><span class="swatch swatch-w"></span><span id="nameW">White</span></span>
+            <span class="player-name"><span class="swatch swatch-b"></span><span id="nameB">Black</span></span>
+            <span class="acc" id="accW">0.0</span>
+            <span class="acc" id="accB">0.0</span>
+            <p class="acc-label">Accuracy</p>
+          </div>
+
+          <table class="grades" id="grades">
+            <thead><tr><th scope="col">Move grade</th><th scope="col" class="num">White</th><th scope="col" class="num">Black</th></tr></thead>
+            <tbody></tbody>
+          </table>
+
+          <div class="sheet-head">
+            <h2>Scoresheet</h2>
+            <button class="link-btn" id="btnNew">Back to games</button>
+          </div>
+          <div class="sheet" id="sheet" tabindex="0" aria-label="Moves"></div>
+        </section>
+      </aside>
+    </main>
+
+    <aside class="ad-rail" aria-label="Advertisement">
+      <div class="ad-slot" id="adRight"></div>
+    </aside>
+  </div>
 
   <footer class="foot">
-    <p>Runs entirely in your browser with <a href="https://stockfishchess.org">Stockfish</a> (GPLv3) and <a href="https://github.com/jhlywa/chess.js">chess.js</a>. Pieces by Cburnett, CC BY-SA 3.0. Grade names follow the ones chess.com players already know; this project is not affiliated with chess.com.</p>
+    <p>Stockfish (GPLv3) and chess.js run in your browser. Pieces by Cburnett, CC BY-SA 3.0. Not affiliated with chess.com.</p>
   </footer>
 
   <script type="module" src="js/app.js"></script>
